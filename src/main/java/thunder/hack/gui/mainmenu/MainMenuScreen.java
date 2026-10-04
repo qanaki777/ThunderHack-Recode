@@ -14,7 +14,6 @@ import thunder.hack.api.IAddon;
 import thunder.hack.core.Managers;
 import thunder.hack.core.manager.client.ModuleManager;
 import thunder.hack.gui.font.FontRenderers;
-import thunder.hack.utility.ThunderUtility;
 import thunder.hack.utility.render.Render2DEngine;
 import thunder.hack.utility.render.TextureStorage;
 
@@ -112,13 +111,6 @@ public class MainMenuScreen extends Screen {
         context.drawTexture(TextureStorage.thTeam, mc.getWindow().getScaledWidth() - 40, mc.getWindow().getScaledHeight() - 40, 30, 30, 0, 0, 30, 30, 30, 30);
         RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
 
-        int offsetY = 10;
-        for (String change : ThunderUtility.changeLog) {
-            String prefix = getPrefix(change);
-            FontRenderers.sf_medium.drawString(context.getMatrices(), prefix, 10, offsetY, Render2DEngine.applyOpacity(-1, 0.4f));
-            offsetY += 10;
-        }
-
         int totalAddonsLoaded = Managers.ADDON.getTotalAddons();
         String addonsText = "Addons Loaded: " + totalAddonsLoaded;
         int screenWidth = mc.getWindow().getScaledWidth();
@@ -134,24 +126,6 @@ public class MainMenuScreen extends Screen {
             FontRenderers.sf_bold.drawString(context.getMatrices(), addon.getName() + Formatting.WHITE + " |", textX, 13 + offset, Color.GRAY.getRGB());
             offset += 9;
         }
-    }
-
-    private static @NotNull String getPrefix(@NotNull String change) {
-        String prefix = "";
-        if (change.contains("[+]")) {
-            change = change.replace("[+] ", "");
-            prefix = Formatting.GREEN + "[+] " + Formatting.RESET;
-        } else if (change.contains("[-]")) {
-            change = change.replace("[-] ", "");
-            prefix = Formatting.RED + "[-] " + Formatting.RESET;
-        } else if (change.contains("[/]")) {
-            change = change.replace("[/] ", "");
-            prefix = Formatting.LIGHT_PURPLE + "[/] " + Formatting.RESET;
-        } else if (change.contains("[*]")) {
-            change = change.replace("[*] ", "");
-            prefix = Formatting.GOLD + "[*] " + Formatting.RESET;
-        }
-        return prefix + change;
     }
 
     @Override
