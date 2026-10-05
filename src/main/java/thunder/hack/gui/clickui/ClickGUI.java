@@ -29,8 +29,12 @@ public class ClickGUI extends Screen {
         return Managers.MODULE.modules;                 // eski surumlerde: ThunderHack.moduleManager.modules
     }
 
-    private static String catKey(Module m) {
-        return m.getCategory().name();                  // COMBAT, MOVEMENT, RENDER, PLAYER, MISC ...
+        private static String catKey(Module m) {
+        String n = m.getCategory().getName().toUpperCase();
+        if (n.equals("VISUALS")) return "RENDER";
+        if (n.equals("MISCELLANEOUS")) return "MISC";
+        return n;
+    }                 // COMBAT, MOVEMENT, RENDER, PLAYER, MISC ...
     }
 
     private static void drawRound(DrawContext c, float x, float y, float w, float h, float r, Color col) {
@@ -42,7 +46,17 @@ public class ClickGUI extends Screen {
     }
     // ========================================================================================
 
-    private static ClickGUI instance;
+        // Diger dosyalarin kullandigi alanlar
+    public static boolean anyHovered = false;
+    public static boolean close = false;
+    public static String currentDescription = "";
+
+    public final ImageAnim imageAnimation = new ImageAnim();
+
+    public static class ImageAnim {
+        public void reset() {
+        }
+    }
 
     public static ClickGUI getClickGui() {
         if (instance == null) instance = new ClickGUI();
