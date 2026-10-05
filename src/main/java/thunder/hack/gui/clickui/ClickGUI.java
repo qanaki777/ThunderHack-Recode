@@ -7,33 +7,35 @@ import net.minecraft.text.Text;
 import org.lwjgl.glfw.GLFW;
 import thunder.hack.core.Managers;
 import thunder.hack.features.modules.Module;
+import thunder.hack.gui.font.FontRenderers;
 import thunder.hack.setting.Setting;
 import thunder.hack.utility.render.Render2DEngine;
 
 import java.awt.Color;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * FelixDlc ClickGUI - 5 koyu yuvarlak panel (Combat / Movement / Visuals / Player / Miscellaneous)
- * Sol tik: modulu ac/kapat | Sag tik veya "...": ayarlari ac | Scroll: kaydir | Altta arama
+ * FelixDlc ClickGUI (ThunderHack stili)
+ * - Her kategori ayri, SURUKLENEBILIR panel (basliga basili tut + surukle)
+ * - Sol tik: modul ac/kapat | Sag tik: ayarlari ac | Scroll: panel icinde kaydir
+ * - Altta arama cubugu, modul uzerine gelince aciklama yazisi
+ * - Font: ThunderHack'in kendi fontu (FontRenderers.sf_medium)
  *
- * Derleme hatasi cikarsa SADECE asagidaki "API KOPRUSU" bolumundeki 4 metodu duzelt.
+ * Derleme hatasi cikarsa SADECE "API KOPRUSU" bolumunu duzelt.
  */
 public class ClickGUI extends Screen {
 
-    // ===================== API KOPRUSU (forkundaki isimlere gore duzelt) =====================
+    // ===================== API KOPRUSU =====================
     private static List<Module> allModules() {
-        return Managers.MODULE.modules;                 // eski surumlerde: ThunderHack.moduleManager.modules
+        return Managers.MODULE.modules;
     }
 
     private static String catKey(Module m) {
-        String n = m.getCategory().getName().toUpperCase();
-        if (n.equals("VISUALS")) return "RENDER";
-        if (n.equals("MISCELLANEOUS")) return "MISC";
-        return n;
+        return m.getCategory().getName();
     }
 
     private static void drawRound(DrawContext c, float x, float y, float w, float h, float r, Color col) {
@@ -41,9 +43,20 @@ public class ClickGUI extends Screen {
     }
 
     private static List<Setting<?>> settingsOf(Module m) {
-        return new ArrayList<>(m.getSettings());        // bazi surumlerde List<Setting<?>> zaten
+        return new ArrayList<>(m.getSettings());
     }
-    // ========================================================================================
+
+    // Font koprusu. Font hata verirse bu iki metodu asagidaki vanilla satirlarla degistir:
+    //   text:  c.drawTextWithShadow(MinecraftClient.getInstance().textRenderer, s, (int) x, (int) y, col);
+    //   textW: return MinecraftClient.getInstance().textRenderer.getWidth(s);
+    private static void text(DrawContext c, String s, float x, float y, int col) {
+        FontRenderers.sf_medium.drawString(c.getMatrices(), s, x, y, col);
+    }
+
+    private static float textW(String s) {
+        return FontRenderers.sf_medium.getStringWidth(s);
+    }
+    // =======================================================
 
     private static ClickGUI instance;
 
@@ -64,21 +77,23 @@ public class ClickGUI extends Screen {
         return instance;
     }
 
-    private static final Map<String, String> PANELS = new LinkedHashMap<>();
-    static {
-        PANELS.put("COMBAT", "Combat");
-        PANELS.put("MOVEMENT", "Movement");
-        PANELS.put("RENDER", "Visuals");
-        PANELS.put("PLAYER", "Player");
-        PANELS.put("MISC", "Miscellaneous");
+    public static void open() {
+        MinecraftClient.getInstance().setScreen(getClickGui());
     }
 
-    private static final int PANEL_W = 224, PANEL_H = 255, HEADER_H = 30, ROW_H = 24, PAD = 8, GAP = 12;
+    private static final int PANEL_W = 112, HEADER_H = 20, ROW_H = 17, GAP = 8, MAX_BODY = 280, SET_H = 16;
+    private static final Color ACCENT = new Color(140, 90, 240);
+    private static final Color PANEL_BG = new Color(18, 17, 28, 235);
+    private static final Color ROW_BG = new Color(34, 32, 50, 210);
 
-    private final Map<String, Float> scroll = new LinkedHashMap<>();
-    private final Map<Module, Boolean> expanded = new java.util.HashMap<>();
-    private final Map<Module, Float> hoverAnim = new java.util.HashMap<>();
-    private Setting<?> draggingSlider;
+    private final Map<String, float[]> pos = new LinkedHashMap<>();
+    private final Map<String, Float> scroll = new HashMap<>();
+    private final Map<Module, Boolean> expanded = new HashMap<>();
+    private final Map<Module, Float> anim = new HashMap<>();
+
+    private String dragCat;
+    private float dragDX, dragDY;
+    private Setting<?> slider;
     private float sliderX, sliderW;
     private String search = "";
     private boolean searching;
@@ -88,13 +103,22 @@ public class ClickGUI extends Screen {
         super(Text.literal("FelixGui"));
     }
 
-    public static void open() {
-        MinecraftClient.getInstance().setScreen(getClickGui());
-    }
-
     @Override
     protected void init() {
         openAnim = 0f;
+        // kategorileri modullerden bul (HUD elemanlari haric)
+        List<String> cats = new ArrayList<>();
+        for (Module m : allModules()) {
+            String c = catKey(m);
+            if (c.equalsIgnoreCase("HUD")) continue;
+            if (!cats.contains(c)) cats.add(c);
+        }
+        float total = cats.size() * PANEL_W + (cats.size() - 1) * GAP;
+        float x = (width - total) / 2f;
+        for (String c : cats) {
+            if (!pos.containsKey(c)) pos.put(c, new float[]{x, 30});
+            x += PANEL_W + GAP;
+        }
     }
 
     @Override
@@ -102,16 +126,7 @@ public class ClickGUI extends Screen {
         return false;
     }
 
-    // ----------------------------------------------------------------- layout
-    private float startX() {
-        float total = PANELS.size() * PANEL_W + (PANELS.size() - 1) * GAP;
-        return (width - total) / 2f;
-    }
-
-    private float startY() {
-        return Math.max(20, (height - PANEL_H) / 2f - 14);
-    }
-
+    // ------------------------------------------------------------ helpers
     private List<Module> modulesOf(String cat) {
         List<Module> out = new ArrayList<>();
         for (Module m : allModules()) {
@@ -123,159 +138,177 @@ public class ClickGUI extends Screen {
     }
 
     private float rowHeight(Module m) {
-        if (!expanded.getOrDefault(m, false)) return ROW_H;
         float h = ROW_H;
-        for (Setting<?> s : settingsOf(m)) if (s.isVisible()) h += 20;
-        return h + 4;
-    }
-
-    private float contentHeight(List<Module> mods) {
-        float h = 0;
-        for (Module m : mods) h += rowHeight(m) + 3;
+        if (expanded.getOrDefault(m, false)) {
+            for (Setting<?> s : settingsOf(m)) if (s.isVisible()) h += SET_H + 2;
+            h += 2;
+        }
         return h;
     }
 
-    // ----------------------------------------------------------------- render
+    private float contentHeight(List<Module> mods) {
+        float h = 3;
+        for (Module m : mods) h += rowHeight(m) + 2;
+        return h;
+    }
+
+    private float bodyHeight(List<Module> mods) {
+        return Math.min(MAX_BODY, contentHeight(mods));
+    }
+
+    // ------------------------------------------------------------ render
     @Override
     public void render(DrawContext ctx, int mx, int my, float delta) {
         openAnim = Math.min(1f, openAnim + delta * 0.12f);
-        int dim = (int) (110 * openAnim);
-        ctx.fill(0, 0, width, height, new Color(0, 0, 0, dim).getRGB());
+        ctx.fill(0, 0, width, height, new Color(0, 0, 0, (int) (100 * openAnim)).getRGB());
 
-        float x0 = startX(), y0 = startY() + (1f - openAnim) * 14f;
-        int i = 0;
-        for (Map.Entry<String, String> e : PANELS.entrySet()) {
-            float px = x0 + i * (PANEL_W + GAP);
-            renderPanel(ctx, e.getKey(), e.getValue(), px, y0, mx, my, delta);
-            i++;
+        anyHovered = false;
+        currentDescription = "";
+
+        for (Map.Entry<String, float[]> e : pos.entrySet()) {
+            renderPanel(ctx, e.getKey(), e.getValue()[0], e.getValue()[1], mx, my, delta);
         }
-        renderSearch(ctx, y0);
+
+        // arama cubugu
+        float sw = 200, sh = 20, sx = (width - sw) / 2f, sy = height - 40;
+        drawRound(ctx, sx, sy, sw, sh, 6, new Color(18, 17, 28, 235));
+        String t = search.isEmpty() && !searching ? "Search..." : search + (searching && (System.currentTimeMillis() / 500) % 2 == 0 ? "_" : "");
+        text(ctx, t, sx + 8, sy + 6, search.isEmpty() ? 0xFF8888A0 : 0xFFFFFFFF);
+
+        // aciklama
+        if (!currentDescription.isEmpty()) {
+            float dw = textW(currentDescription) + 16;
+            drawRound(ctx, (width - dw) / 2f, sy - 24, dw, 18, 5, new Color(18, 17, 28, 235));
+            text(ctx, currentDescription, (width - dw) / 2f + 8, sy - 19, 0xFFD8D8E4);
+        }
         super.render(ctx, mx, my, delta);
     }
 
-    private void renderPanel(DrawContext ctx, String key, String title, float px, float py, int mx, int my, float delta) {
-        int a = (int) (235 * openAnim);
-        drawRound(ctx, px, py, PANEL_W, PANEL_H, 12, new Color(22, 20, 36, a));
-        ctx.drawCenteredTextWithShadow(textRenderer, title, (int) (px + PANEL_W / 2f), (int) (py + 11), 0xFFFFFFFF);
+    private void renderPanel(DrawContext ctx, String cat, float px, float py, int mx, int my, float delta) {
+        List<Module> mods = modulesOf(cat);
+        float bh = bodyHeight(mods);
 
-        List<Module> mods = modulesOf(key);
-        float viewH = PANEL_H - HEADER_H - 8;
-        float maxScroll = Math.max(0, contentHeight(mods) - viewH);
-        float sc = Math.max(-maxScroll, Math.min(0, scroll.getOrDefault(key, 0f)));
-        scroll.put(key, sc);
+        drawRound(ctx, px, py, PANEL_W, HEADER_H + bh + 4, 8, PANEL_BG);
+        drawRound(ctx, px, py, PANEL_W, HEADER_H, 8, new Color(ACCENT.getRed(), ACCENT.getGreen(), ACCENT.getBlue(), 200));
+        text(ctx, cat, px + (PANEL_W - textW(cat)) / 2f, py + 6, 0xFFFFFFFF);
 
-        ctx.enableScissor((int) px, (int) (py + HEADER_H), (int) (px + PANEL_W), (int) (py + PANEL_H - 6));
-        float y = py + HEADER_H + sc;
+        float maxScroll = Math.max(0, contentHeight(mods) - bh);
+        float sc = Math.max(-maxScroll, Math.min(0, scroll.getOrDefault(cat, 0f)));
+        scroll.put(cat, sc);
+
+        ctx.enableScissor((int) px, (int) (py + HEADER_H), (int) (px + PANEL_W), (int) (py + HEADER_H + bh + 2));
+        float y = py + HEADER_H + 3 + sc;
         for (Module m : mods) {
             float rh = rowHeight(m);
-            if (y + rh > py + HEADER_H - 2 && y < py + PANEL_H) renderModule(ctx, m, px + PAD, y, PANEL_W - PAD * 2, mx, my, delta);
-            y += rh + 3;
+            if (y + rh > py + HEADER_H && y < py + HEADER_H + bh + 2)
+                renderModule(ctx, m, px + 4, y, PANEL_W - 8, mx, my, delta, py + HEADER_H, py + HEADER_H + bh);
+            y += rh + 2;
         }
         ctx.disableScissor();
-
-        if (maxScroll > 0) {
-            float bh = Math.max(20, viewH * (viewH / (viewH + maxScroll)));
-            float by = py + HEADER_H + (-sc / maxScroll) * (viewH - bh);
-            drawRound(ctx, px + PANEL_W - 5, by, 2, bh, 1, new Color(255, 255, 255, 60));
-        }
     }
 
-    private void renderModule(DrawContext ctx, Module m, float x, float y, float w, int mx, int my, float delta) {
-        boolean hov = mx >= x && mx <= x + w && my >= y && my <= y + ROW_H && inClip(mx, my);
-        float ha = hoverAnim.getOrDefault(m, 0f);
-        ha += ((hov ? 1f : 0f) - ha) * Math.min(1f, delta * 0.4f);
-        hoverAnim.put(m, ha);
+    private void renderModule(DrawContext ctx, Module m, float x, float y, float w, int mx, int my, float delta, float clipTop, float clipBot) {
+        boolean hov = mx >= x && mx <= x + w && my >= y && my <= y + ROW_H && my >= clipTop && my <= clipBot;
+        float a = anim.getOrDefault(m, 0f);
+        a += ((m.isEnabled() ? 1f : 0f) - a) * Math.min(1f, delta * 0.35f);
+        anim.put(m, a);
 
-        boolean on = m.isEnabled();
-        Color bg = on ? new Color(120, 70, 220, 150) : new Color(40, 38, 58, (int) (150 + 40 * ha));
-        drawRound(ctx, x, y, w, ROW_H, 6, bg);
+        if (hov) {
+            anyHovered = true;
+            currentDescription = m.getDescription() == null ? "" : m.getDescription();
+        }
 
-        ctx.drawTextWithShadow(textRenderer, m.getName(), (int) x + 8, (int) y + 8, on ? 0xFFFFFFFF : 0xFFD8D8E4);
-        ctx.drawTextWithShadow(textRenderer, "...", (int) (x + w - 16), (int) y + 7, 0xFFFFFFFF);
+        drawRound(ctx, x, y, w, ROW_H, 5, new Color(ROW_BG.getRed() + (hov ? 8 : 0), ROW_BG.getGreen() + (hov ? 8 : 0), ROW_BG.getBlue() + (hov ? 10 : 0), ROW_BG.getAlpha()));
+        if (a > 0.02f)
+            drawRound(ctx, x, y, w, ROW_H, 5, new Color(ACCENT.getRed(), ACCENT.getGreen(), ACCENT.getBlue(), (int) (170 * a)));
+
+        text(ctx, m.getName(), x + 6, y + 5, m.isEnabled() ? 0xFFFFFFFF : 0xFFC8C8D6);
+        if (!settingsOf(m).isEmpty()) {
+            String ar = expanded.getOrDefault(m, false) ? "-" : "+";
+            text(ctx, ar, x + w - 10, y + 5, 0xFFB8B8C8);
+        }
 
         if (expanded.getOrDefault(m, false)) {
             float sy = y + ROW_H + 2;
             for (Setting<?> s : settingsOf(m)) {
                 if (!s.isVisible()) continue;
-                renderSetting(ctx, s, x + 4, sy, w - 8);
-                sy += 20;
+                renderSetting(ctx, s, x + 3, sy, w - 6);
+                sy += SET_H + 2;
             }
         }
     }
 
     private void renderSetting(DrawContext ctx, Setting<?> s, float x, float y, float w) {
         Object v = s.getValue();
-        drawRound(ctx, x, y, w, 18, 5, new Color(30, 28, 46, 190));
+        drawRound(ctx, x, y, w, SET_H, 4, new Color(26, 25, 40, 220));
         if (v instanceof Boolean b) {
-            ctx.drawTextWithShadow(textRenderer, s.getName(), (int) x + 6, (int) y + 5, 0xFFD8D8E4);
-            drawRound(ctx, x + w - 26, y + 4, 20, 10, 5, b ? new Color(140, 90, 240) : new Color(70, 68, 90));
-            drawRound(ctx, x + w - (b ? 14 : 24), y + 5, 8, 8, 4, Color.WHITE);
+            text(ctx, s.getName(), x + 5, y + 4, 0xFFD8D8E4);
+            drawRound(ctx, x + w - 22, y + 4, 17, 8, 4, b ? ACCENT : new Color(70, 68, 90));
+            drawRound(ctx, x + w - (b ? 13 : 21), y + 5, 6, 6, 3, Color.WHITE);
         } else if (v instanceof Number n) {
             double min = ((Number) s.getMin()).doubleValue(), max = ((Number) s.getMax()).doubleValue();
-            double pct = (n.doubleValue() - min) / Math.max(0.0001, max - min);
-            drawRound(ctx, x + 4, y + 13, (float) ((w - 8) * pct), 3, 1.5f, new Color(150, 100, 255));
-            ctx.drawTextWithShadow(textRenderer, s.getName(), (int) x + 6, (int) y + 2, 0xFFD8D8E4);
+            double pct = Math.max(0, Math.min(1, (n.doubleValue() - min) / Math.max(0.0001, max - min)));
+            drawRound(ctx, x + 3, y + SET_H - 4, (float) ((w - 6) * pct), 2, 1, ACCENT);
+            text(ctx, s.getName(), x + 5, y + 2, 0xFFD8D8E4);
             String t = (v instanceof Integer) ? String.valueOf(n.intValue()) : String.format("%.1f", n.doubleValue());
-            ctx.drawTextWithShadow(textRenderer, t, (int) (x + w - 6 - textRenderer.getWidth(t)), (int) y + 2, 0xFFFFFFFF);
+            text(ctx, t, x + w - 5 - textW(t), y + 2, 0xFFFFFFFF);
         } else if (v instanceof Enum<?> en) {
-            ctx.drawTextWithShadow(textRenderer, s.getName(), (int) x + 6, (int) y + 5, 0xFFD8D8E4);
+            text(ctx, s.getName(), x + 5, y + 4, 0xFFD8D8E4);
             String t = en.name();
-            ctx.drawTextWithShadow(textRenderer, t, (int) (x + w - 6 - textRenderer.getWidth(t)), (int) y + 5, 0xFFB794FF);
+            text(ctx, t, x + w - 5 - textW(t), y + 4, 0xFFB794FF);
         } else {
-            ctx.drawTextWithShadow(textRenderer, s.getName(), (int) x + 6, (int) y + 5, 0xFF8888A0);
+            text(ctx, s.getName(), x + 5, y + 4, 0xFF8888A0);
         }
     }
 
-    private void renderSearch(DrawContext ctx, float y0) {
-        float w = 220, h = 22;
-        float x = (width - w) / 2f, y = y0 + PANEL_H + 14;
-        drawRound(ctx, x, y, w, h, 8, new Color(22, 20, 36, (int) (235 * openAnim)));
-        String t = search.isEmpty() && !searching ? "Search..." : search + (searching && (System.currentTimeMillis() / 500) % 2 == 0 ? "_" : "");
-        ctx.drawCenteredTextWithShadow(textRenderer, t, (int) (x + w / 2), (int) y + 7, search.isEmpty() ? 0xFF8888A0 : 0xFFFFFFFF);
-    }
-
-    // ----------------------------------------------------------------- input
-    private boolean inClip(int mx, int my) {
-        float x0 = startX(), y0 = startY();
-        return my >= y0 + HEADER_H && my <= y0 + PANEL_H - 6 && mx >= x0 && mx <= x0 + PANELS.size() * (PANEL_W + GAP);
-    }
-
+    // ------------------------------------------------------------ input
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
-        float x0 = startX(), y0 = startY();
-
-        float sw = 220, sx = (width - sw) / 2f, sy = y0 + PANEL_H + 14;
-        searching = mx >= sx && mx <= sx + sw && my >= sy && my <= sy + 22;
+        float sw = 200, sh = 20, sx = (width - sw) / 2f, sy = height - 40;
+        searching = mx >= sx && mx <= sx + sw && my >= sy && my <= sy + sh;
         if (searching) return true;
 
-        int i = 0;
-        for (String key : PANELS.keySet()) {
-            float px = x0 + i * (PANEL_W + GAP);
-            i++;
-            if (mx < px || mx > px + PANEL_W || my < y0 + HEADER_H || my > y0 + PANEL_H - 6) continue;
+        // ustteki panel once tiklansin diye tersten tara
+        List<String> keys = new ArrayList<>(pos.keySet());
+        for (int i = keys.size() - 1; i >= 0; i--) {
+            String cat = keys.get(i);
+            float px = pos.get(cat)[0], py = pos.get(cat)[1];
+            List<Module> mods = modulesOf(cat);
+            float bh = bodyHeight(mods);
+            if (mx < px || mx > px + PANEL_W || my < py || my > py + HEADER_H + bh + 4) continue;
 
-            float y = y0 + HEADER_H + scroll.getOrDefault(key, 0f);
-            for (Module m : modulesOf(key)) {
-                float x = px + PAD, w = PANEL_W - PAD * 2;
+            if (my <= py + HEADER_H) {
+                if (button == 0) {
+                    dragCat = cat;
+                    dragDX = (float) mx - px;
+                    dragDY = (float) my - py;
+                }
+                return true;
+            }
+            if (my > py + HEADER_H + bh + 2) return true;
+
+            float y = py + HEADER_H + 3 + scroll.getOrDefault(cat, 0f);
+            for (Module m : mods) {
+                float x = px + 4, w = PANEL_W - 8;
                 if (my >= y && my <= y + ROW_H && mx >= x && mx <= x + w) {
-                    boolean dots = mx >= x + w - 24;
-                    if (button == 1 || (button == 0 && dots)) expanded.put(m, !expanded.getOrDefault(m, false));
-                    else if (button == 0) m.toggle();
+                    if (button == 0) m.toggle();
+                    else if (button == 1) expanded.put(m, !expanded.getOrDefault(m, false));
                     return true;
                 }
                 if (expanded.getOrDefault(m, false)) {
                     float st = y + ROW_H + 2;
                     for (Setting<?> s : settingsOf(m)) {
                         if (!s.isVisible()) continue;
-                        if (my >= st && my <= st + 18 && mx >= x + 4 && mx <= x + w - 4) {
-                            clickSetting(s, x + 4, w - 8, mx, button);
+                        if (my >= st && my <= st + SET_H && mx >= x + 3 && mx <= x + w - 3) {
+                            clickSetting(s, x + 3, w - 6, mx, button);
                             return true;
                         }
-                        st += 20;
+                        st += SET_H + 2;
                     }
                 }
-                y += rowHeight(m) + 3;
+                y += rowHeight(m) + 2;
             }
+            return true;
         }
         return super.mouseClicked(mx, my, button);
     }
@@ -286,9 +319,9 @@ public class ClickGUI extends Screen {
         if (v instanceof Boolean b) {
             s.setValue(!b);
         } else if (v instanceof Number) {
-            draggingSlider = s;
-            sliderX = x + 4;
-            sliderW = w - 8;
+            slider = s;
+            sliderX = x + 3;
+            sliderW = w - 6;
             applySlider(mx);
         } else if (v instanceof Enum<?> en) {
             Object[] all = en.getDeclaringClass().getEnumConstants();
@@ -299,8 +332,8 @@ public class ClickGUI extends Screen {
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private void applySlider(double mx) {
-        if (draggingSlider == null) return;
-        Setting s = draggingSlider;
+        if (slider == null) return;
+        Setting s = slider;
         double min = ((Number) s.getMin()).doubleValue(), max = ((Number) s.getMax()).doubleValue();
         double pct = Math.max(0, Math.min(1, (mx - sliderX) / sliderW));
         double val = min + (max - min) * pct;
@@ -312,7 +345,13 @@ public class ClickGUI extends Screen {
 
     @Override
     public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
-        if (draggingSlider != null) {
+        if (dragCat != null) {
+            float[] p = pos.get(dragCat);
+            p[0] = (float) mx - dragDX;
+            p[1] = (float) my - dragDY;
+            return true;
+        }
+        if (slider != null) {
             applySlider(mx);
             return true;
         }
@@ -321,19 +360,18 @@ public class ClickGUI extends Screen {
 
     @Override
     public boolean mouseReleased(double mx, double my, int button) {
-        draggingSlider = null;
+        dragCat = null;
+        slider = null;
         return super.mouseReleased(mx, my, button);
     }
 
     @Override
     public boolean mouseScrolled(double mx, double my, double h, double v) {
-        float x0 = startX();
-        int i = 0;
-        for (String key : PANELS.keySet()) {
-            float px = x0 + i * (PANEL_W + GAP);
-            i++;
-            if (mx >= px && mx <= px + PANEL_W) {
-                scroll.put(key, scroll.getOrDefault(key, 0f) + (float) v * 22f);
+        for (Map.Entry<String, float[]> e : pos.entrySet()) {
+            float px = e.getValue()[0], py = e.getValue()[1];
+            float bh = bodyHeight(modulesOf(e.getKey()));
+            if (mx >= px && mx <= px + PANEL_W && my >= py && my <= py + HEADER_H + bh + 4) {
+                scroll.put(e.getKey(), scroll.getOrDefault(e.getKey(), 0f) + (float) v * 18f);
                 return true;
             }
         }
@@ -360,12 +398,16 @@ public class ClickGUI extends Screen {
                 searching = false;
                 return true;
             }
+            if (key == GLFW.GLFW_KEY_ESCAPE) {
+                searching = false;
+                return true;
+            }
         }
         return super.keyPressed(key, scan, mods);
     }
 
     @Override
     public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
-        // bulanik arka plan yok; render() icinde kendi karartmamizi ciziyoruz
+        // kendi karartmamizi render() icinde ciziyoruz
     }
 }
