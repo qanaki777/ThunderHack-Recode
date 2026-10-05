@@ -126,6 +126,39 @@ public class ClickGUI extends Screen {
         return false;
     }
 
+
+    private static Color catColor(String cat) {
+        return Color.getHSBColor((Math.abs(cat.toLowerCase().hashCode()) % 360) / 360f, 0.55f, 0.95f);
+    }
+
+    private void drawLogo(DrawContext ctx) {
+        float cx = width / 2f, y = 5;
+        drawRound(ctx, cx - 8, y, 4, 18, 2, ACCENT);
+        drawRound(ctx, cx - 8, y, 15, 4, 2, ACCENT);
+        drawRound(ctx, cx - 8, y + 7, 11, 4, 2, ACCENT);
+        text(ctx, "FelixDlc", cx + 12, y + 6, 0xFFFFFFFF);
+    }
+
+    private void drawEnabledList(DrawContext ctx) {
+        List<Module> on = new ArrayList<>();
+        for (Module m : allModules()) {
+            if (!m.isEnabled() || catKey(m).equalsIgnoreCase("HUD")) continue;
+            on.add(m);
+        }
+        on.sort((a, b) -> Float.compare(textW(b.getName()), textW(a.getName())));
+        float y = 6;
+        int shown = 0;
+        for (Module m : on) {
+            if (shown++ >= 14) break;
+            float w = textW(m.getName()) + 12;
+            float x = width - 6 - w;
+            drawRound(ctx, x, y, w, 13, 4, new Color(18, 17, 28, 210));
+            drawRound(ctx, x + w - 2, y + 2, 2, 9, 1, catColor(catKey(m)));
+            text(ctx, m.getName(), x + 4, y + 3, 0xFFFFFFFF);
+            y += 15;
+        }
+    }
+
     // ------------------------------------------------------------ helpers
     private List<Module> modulesOf(String cat) {
         List<Module> out = new ArrayList<>();
@@ -169,6 +202,9 @@ public class ClickGUI extends Screen {
             renderPanel(ctx, e.getKey(), e.getValue()[0], e.getValue()[1], mx, my, delta);
         }
 
+        drawLogo(ctx);
+        drawEnabledList(ctx);
+
         // arama cubugu
         float sw = 200, sh = 20, sx = (width - sw) / 2f, sy = height - 40;
         drawRound(ctx, sx, sy, sw, sh, 6, new Color(18, 17, 28, 235));
@@ -190,7 +226,12 @@ public class ClickGUI extends Screen {
 
         drawRound(ctx, px, py, PANEL_W, HEADER_H + bh + 4, 8, PANEL_BG);
         drawRound(ctx, px, py, PANEL_W, HEADER_H, 8, new Color(ACCENT.getRed(), ACCENT.getGreen(), ACCENT.getBlue(), 200));
-        text(ctx, cat, px + (PANEL_W - textW(cat)) / 2f, py + 6, 0xFFFFFFFF);
+        Color cc = catColor(cat);
+        drawRound(ctx, px + 5, py + 4, 12, 12, 4, cc);
+        text(ctx, cat.substring(0, 1).toUpperCase(), px + 5 + (12 - textW(cat.substring(0, 1).toUpperCase())) / 2f, py + 6, 0xFFFFFFFF);
+        text(ctx, cat, px + 22, py + 6, 0xFFFFFFFF);
+        String cnt = String.valueOf(mods.size());
+        text(ctx, cnt, px + PANEL_W - 6 - textW(cnt), py + 6, 0xAAFFFFFF);
 
         float maxScroll = Math.max(0, contentHeight(mods) - bh);
         float sc = Math.max(-maxScroll, Math.min(0, scroll.getOrDefault(cat, 0f)));
@@ -222,7 +263,10 @@ public class ClickGUI extends Screen {
         if (a > 0.02f)
             drawRound(ctx, x, y, w, ROW_H, 5, new Color(ACCENT.getRed(), ACCENT.getGreen(), ACCENT.getBlue(), (int) (170 * a)));
 
-        text(ctx, m.getName(), x + 6, y + 5, m.isEnabled() ? 0xFFFFFFFF : 0xFFC8C8D6);
+        Color dc = m.isEnabled() ? new Color(120, 255, 160) : new Color(90, 88, 112);
+        if (m.isEnabled()) drawRound(ctx, x + 4, y + ROW_H / 2f - 4, 8, 8, 4, new Color(120, 255, 160, 60));
+        drawRound(ctx, x + 6, y + ROW_H / 2f - 2, 4, 4, 2, dc);
+        text(ctx, m.getName(), x + 15, y + 5, m.isEnabled() ? 0xFFFFFFFF : 0xFFC8C8D6);
         if (!settingsOf(m).isEmpty()) {
             String ar = expanded.getOrDefault(m, false) ? "-" : "+";
             text(ctx, ar, x + w - 10, y + 5, 0xFFB8B8C8);
