@@ -28,7 +28,7 @@ import static thunder.hack.features.modules.Module.fullNullCheck;
  * Bu sınıf jar içindeki thunder.hack.gui.clickui API'sine göre yazıldı:
  *   AbstractCategory / Category / ModuleButton / AbstractElement
  *   ClickGui modülü ayarları: moduleWidth, catHeight, blur, image, scrollMode,
- *   descriptions, tips, closeAnimation, imageAnimation
+ *   descriptions, tips, closeAnimation
  *
  * KULLANIM:
  *   ClickGui modülünün onEnable()'ında:  mc.setScreen(ClickGUI.getClickGui());
@@ -52,7 +52,7 @@ public class ClickGUI extends Screen {
     private float prevYaw, prevPitch;
     private int closeDirectionX, closeDirectionY;
     private int imageDirection;
-    private final EaseOutBack imageAnimation = new EaseOutBack(20);
+    public final EaseOutBack imageAnimation = new EaseOutBack(20);
 
     private long handCursor = 0L;
     private boolean handActive = false;
@@ -236,7 +236,7 @@ public class ClickGUI extends Screen {
         ClickGui cfg = ModuleManager.clickGui;
         if (cfg.image.getValue() == ClickGui.Image.None) return;
 
-        double anim = cfg.imageAnimation.getValue() ? imageAnimation.getAnimationd() : 1.0;
+        double anim = imageAnimation.getAnimationd();
         RenderSystem.setShaderTexture(0, cfg.image.getValue().file);
 
         double w = cfg.image.getValue().fileWidth;
